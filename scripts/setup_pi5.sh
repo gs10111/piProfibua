@@ -21,6 +21,6 @@ fi
 echo "[3/3] Instalando regra udev..."
 sudo cp "$HERE/99-rs485.rules" /etc/udev/rules.d/99-rs485.rules
 sudo udevadm control --reload-rules
-sudo udevadm trigger
+sudo udevadm trigger --subsystem-match=tty --subsystem-match=usb-serial
 
-echo "OK. Faca logout/login para o grupo dialout ter efeito."
+echo "OK. Refaca o login (logout/login) para o grupo dialout ter efeito."
