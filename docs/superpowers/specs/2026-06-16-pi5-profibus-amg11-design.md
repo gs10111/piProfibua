@@ -182,3 +182,29 @@ ponta-a-ponta.
 - Multivoltas (modelo é singleturn 13-bit).
 - Múltiplos escravos no barramento (1 encoder).
 - DPV1 (acesso acíclico) — o GSD é DPV0.
+
+## 11. Atualização 2026-06-16 — mudança de escopo (Pi 3 + UART de GPIO)
+
+Após a implementação, o hardware-alvo mudou. As decisões de software (caminho A,
+GSD, módulo Classe 2, decode 13-bit, modo sim) **permanecem**; muda só a camada
+física e a placa:
+
+- **Placa: Pi 5 → Raspberry Pi 3.** No Pi3 a UART de GPIO padrão é a *mini-UART*
+  (`ttyS0`), com baud instável (atrelado ao clock do core). Solução no
+  `scripts/setup_pi3.sh`: `dtoverlay=disable-bt` + `enable_uart=1` + remover o
+  console serial → a **PL011** (`ttyAMA0`) estável passa a responder por
+  `/dev/serial0`.
+- **PHY: USB-RS485 → módulo RS485↔TTL na UART de GPIO.** `config/amg11.conf`:
+  `dev = /dev/serial0`. Some o setup de FTDI/`latency_timer`/udev (era específico de
+  USB); entram a config da UART e os dois alertas de hardware abaixo.
+- **Alerta de nível 3,3 V:** o GPIO do Pi não é tolerante a 5 V; um MAX485 (5 V)
+  pode danificar o RXD. Usar transceiver **3,3 V** (MAX3485/SP3485) ou level shifter
+  na linha `RO→RXD`.
+- **Direção meio-duplex:** a via `.conf` do pyprofibus não controla `DE/RE` por RTS
+  (instancia `CpPhySerial` sem `useRS485Class`). Exige **módulo auto-direção**; um
+  MAX485 comum só com 4 fios transmite e nunca recebe. Caminho RS485-mode (RTS +
+  `useRS485Class`) fica como opção futura, dependente de suporte no driver da UART.
+
+Os arquivos `scripts/setup_pi5.sh` e `scripts/99-rs485.rules` (USB/FTDI) foram
+substituídos por `scripts/setup_pi3.sh`. Os testes não dependem de `dev`, então a
+suíte (23) segue verde.
