@@ -61,14 +61,15 @@ pi5-profibus-amg11/
 ├── requirements.txt          # pyprofibus, pyserial
 ├── config/
 │   ├── amg11.conf            # conf do mestre pyprofibus (PHY, addr, baud, slave→GSD)
-│   └── encoder.yaml          # resolução (13 bit), módulo (class1|class2), offset, sentido
+│   └── encoder.yaml          # resolução (13 bit), offset, sentido, control_word
 ├── gsd/
 │   └── PB13DPV0.gsd          # cópia do GSD da Baumer
-├── src/profibus_amg11/
+├── profibus_amg11/           # pacote flat (sem src/, roda no Pi sem install)
 │   ├── __init__.py
 │   ├── master.py             # carrega conf, monta DPM1, roda o loop cíclico
 │   ├── encoder.py            # decodifica bytes → posição/ângulo (EncoderReading)
 │   └── config.py             # lê/valida encoder.yaml
+├── tests/                    # pytest (test_config, test_encoder, test_conf_load, test_master_sim)
 ├── run.py                    # CLI: --conf, --sim, --once, --hz, --verbose
 └── scripts/
     ├── setup_pi5.sh          # grupo dialout + latency_timer do FTDI = 1 ms
@@ -78,14 +79,15 @@ pi5-profibus-amg11/
 ### Componentes
 
 - **`config.py`** — carrega `encoder.yaml` num dataclass `EncoderConfig`
-  (`resolution_bits=13`, `module="class1"`, `direction="cw"`, `offset=0`).
+  (`resolution_bits=13`, `direction="cw"`, `offset=0`, `control_word=0x0000`).
   Responsabilidade única: ler/validar config. Depende só de PyYAML/stdlib.
 - **`encoder.py`** — função pura `decode(data: bytes, cfg) -> EncoderReading`.
   Converte 2 bytes big-endian em `raw` (0–8191), aplica sentido e offset, calcula
   `angle_deg = raw / 2**bits * 360`. Sem efeitos colaterais → testável isolado.
-- **`master.py`** — `Amg11Master`: usa `PbConf.fromFile()` para montar o `DpMaster`
-  e o `DpSlaveDesc` (addr 3, GSD), ajusta o bit "Class 2 functionality" dos
-  user-params conforme o módulo, chama `initialize()` e expõe `read_once()` e
+- **`master.py`** — `Amg11Master`: usa `PbConf.fromFile()` para montar o `DPM1`
+  e o `DpSlaveDesc` (addr 3, GSD), chama `initialize()`, registra o escravo e
+  roda o loop. A cada ciclo escreve a palavra de controle (`setMasterOutData`,
+  2 B) e lê a posição (`getMasterInData`, 2 B). Expõe `read_once()` e
   `run(callback, hz)`. Encapsula a máquina de estados DP do pyprofibus.
 - **`run.py`** — CLI fina: parseia args, instancia `Amg11Master`, imprime leituras.
 
@@ -97,21 +99,41 @@ encoder (addr 3) --RS485--> USB-RS485 --/dev/ttyUSB0--> pyprofibus PHY serial
    -> callback (print/log)
 ```
 
-### Seleção de módulo (`encoder.yaml: module`)
+### Módulo: Classe 2 (`0xF0`) — exigido pela lib
 
-- **`class1` (default, `0xD0`):** 2 B in, posição pura, sem bytes de saída.
-  Alinhado a "começar simples". User-param com Class 2 functionality desabilitado.
-- **`class2` (`0xF0`):** 2 B in + 2 B out. Habilita **preset/zero por software** e
-  scaling pela palavra de controle. User-param com Class 2 functionality habilitado
-  (defaults do GSD). Em leitura normal a palavra de saída fica em estado neutro
-  (sem comando de preset).
+**Restrição descoberta na implementação:** `DpMaster.addSlave()` do pyprofibus
+rejeita `input_size <= 0` (`"input_size=0 is currently not supported"`), e o ciclo
+de `Data_Exchange` só dispara enviando dados mestre→escravo. Logo o módulo
+**Classe 1 (`0xD0`, só leitura, sem saída) não é utilizável** com o pyprofibus.
+Usamos o módulo **Classe 2 (`0xF0`)**.
+
+Mapeamento na lib (perspectiva do escravo, invertida em relação ao mestre):
+
+| pyprofibus | Direção | Conteúdo | Tamanho |
+|---|---|---|---|
+| `output_size` | escravo→mestre (mestre **lê**, `getMasterInData`) | **posição** 16-bit | 2 B |
+| `input_size`  | mestre→escravo (mestre **escreve**, `setMasterOutData`) | **palavra de controle** | 2 B |
+
+O `User_Prm_Data` (18 B do GSD: `00 0A …`) já vem com Class 2 functionality e
+scaling habilitados, casando com o módulo `0xF0`. O `GsdInterp` casa o nome do
+módulo por fuzzy match, então `module_0 = "16 Bit Class 2 Encoder"` resolve.
+
+**Caveat da palavra de controle:** o mestre precisa enviar 2 B de saída a cada
+ciclo só para sustentar o `Data_Exchange`. O default é `control_word = 0x0000`
+(convenção de "sem comando"). A semântica exata desses 2 bytes no perfil do
+encoder Baumer (preset/scaling) **deve ser confirmada no manual** antes do uso em
+campo — há tarefa dedicada no plano para validar que a posição acompanha o eixo e
+não fica travada em zero.
 
 ## 5. Modo de simulação (dev sem hardware)
 
-`run.py --sim` usa o **PHY dummy** do pyprofibus para rodar todo o loop do mestre
-nesta bancada x86 (sem RS485). Permite validar parsing do GSD, decodificação e CLI
-antes de tocar no Pi5. O dummy injeta bytes de posição configuráveis para exercitar
-o `decode()`.
+`run.py --sim` usa o **PHY dummy** (`CpPhyDummySlave`) do pyprofibus para rodar todo
+o loop do mestre nesta bancada x86 (sem RS485). Permite validar parsing do GSD,
+máquina de estados DP, decodificação e CLI antes de tocar no Pi5. O dummy responde
+ao `Data_Exchange` ecoando os bytes de saída do mestre **XOR 0xFF** (truncado/pad
+para `output_size`), então a posição simulada = `control_word XOR 0xFFFF`. O teste
+de integração injeta um valor conhecido por esse mecanismo e confere a leitura
+ponta-a-ponta.
 
 ## 6. Setup no Pi5
 
@@ -149,6 +171,10 @@ o `decode()`.
 - Endereço do escravo é **só por hardware** (GSD: `Set_Slave_Add_supp=0`).
 - Conversor USB-RS485 deve ser de **auto-direção**; modelos que dependem de RTS
   adicionam latência e podem comprometer o timing.
+- **Palavra de controle (mestre→escravo):** pyprofibus obriga `input_size>=1`, então
+  enviamos 2 B por ciclo (default `0x0000`). Confirmar no manual Baumer que esse valor
+  não dispara preset/scaling indevido — validação em campo no plano (posição deve
+  acompanhar o eixo, não travar em zero).
 
 ## 10. Fora de escopo (YAGNI)
 
