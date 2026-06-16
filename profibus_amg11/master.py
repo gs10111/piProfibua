@@ -42,9 +42,13 @@ class Amg11Master:
                 conf.phyType = "dummyslave"
             self.master = conf.makeDPM()
 
-        self.slave = conf.slaveConfs[0].makeDpSlaveDesc()
-        self.master.addSlave(self.slave)
-        self.master.initialize()
+        try:
+            self.slave = conf.slaveConfs[0].makeDpSlaveDesc()
+            self.master.addSlave(self.slave)
+            self.master.initialize()
+        except Exception:
+            self.close()
+            raise
 
     def poll(self):
         """Roda um passo da maquina de estados. Retorna EncoderReading ou None."""
