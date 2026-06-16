@@ -30,7 +30,7 @@ class Amg11Master:
     sim: se True, usa o PHY dummy (sem RS485) para rodar sem hardware.
     """
 
-    def __init__(self, conf_path, encoder_cfg, sim=False):
+    def __init__(self, conf_path, encoder_cfg, sim=False, debug=False):
         self.encoder_cfg = encoder_cfg
         self._out = bytearray(encoder_cfg.control_word.to_bytes(2, "big"))
 
@@ -40,6 +40,7 @@ class Amg11Master:
             conf = PbConf.fromFile(str(conf_path))
             if sim:
                 conf.phyType = "dummyslave"
+            conf.debug = 2 if debug else 0
             self.master = conf.makeDPM()
 
         try:

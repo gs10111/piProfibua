@@ -40,7 +40,7 @@ def main(argv=None):
     log = logging.getLogger("amg11")
 
     cfg = load_config(args.encoder)
-    master = Amg11Master(args.conf, cfg, sim=args.sim)
+    master = Amg11Master(args.conf, cfg, sim=args.sim, debug=args.verbose)
 
     if args.once:
         try:
