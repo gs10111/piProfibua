@@ -1,0 +1,5 @@
+# Encoder Baumer (Hubner) AMG 11 P 13 — parametros de decodificacao por software.
+resolution_bits: 13      # singleturn: 8192 passos por volta (2^13)
+direction: cw            # cw | ccw
+offset: 0                # zero por software (0..8191), subtraido da posicao crua
+control_word: 0x0000     # palavra mestre->escravo por ciclo (ver caveat no README)
