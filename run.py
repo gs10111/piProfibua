@@ -30,6 +30,9 @@ def main(argv=None):
                    help="loga o debug do pyprofibus")
     args = p.parse_args(argv)
 
+    if args.hz <= 0:
+        p.error("--hz deve ser maior que zero")
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
@@ -42,9 +45,9 @@ def main(argv=None):
     if args.once:
         try:
             r = master.read_once()
+            log.info("raw=%d  angle=%.3f deg  bytes=%s", r.raw, r.angle_deg, r.bytes_hex)
         finally:
             master.close()
-        log.info("raw=%d  angle=%.3f deg  bytes=%s", r.raw, r.angle_deg, r.bytes_hex)
         return 0
 
     def on_reading(r):
