@@ -9,6 +9,7 @@ biblioteca **pyprofibus**. Entrega CLI + biblioteca, com modo de simulação.
 - `.conf` do pyprofibus (`config/amg11.conf`) → aponta para o GSD `gsd/PB13DPV0.gsd`.
 - Módulo **Classe 2 (`0xF0`)**: o mestre escreve 2 B (palavra de controle) e lê 2 B
   (posição 16-bit, 13 bits significativos = 8192 passos/volta, singleturn).
+- `config/encoder.yaml`: parâmetros de decodificação (resolução, sentido, offset, control_word).
 - `profibus_amg11/`: `encoder.py` (decode puro), `config.py`, `master.py` (loop DP).
 - `run.py`: CLI.
 
@@ -32,8 +33,9 @@ cd ~/repos/pi5-profibus-amg11
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 ./scripts/setup_pi5.sh /dev/ttyUSB0   # dialout + latency_timer + udev
-# faca logout/login (grupo dialout)
 ```
+
+> **Nota:** após `setup_pi5.sh`, faça logout/login uma vez para o grupo `dialout` valer.
 
 ## Uso
 
@@ -49,10 +51,11 @@ python run.py -v                 # com debug do pyprofibus
 
 Edite `config/encoder.yaml` para `direction`, `offset` (zero por software) e
 `config/amg11.conf` para `dev`/`baud`/`addr`.
+O `encoder.yaml` controla o pós-processamento por software (sentido, zero); o `amg11.conf` controla o enlace PROFIBUS (porta, baud, endereço).
 
 ## Baud rate
 
-Começa em **19200** (`config/amg11.conf`). O encoder faz auto-baud (9.6k–12M).
+Começa em **19200** (chave `baud` em `config/amg11.conf`). O encoder faz auto-baud (9.6k–12M).
 Suba gradualmente se o barramento estiver estável. Em Linux não-RT, baud moderado
 + `latency_timer=1` é o que garante o timing.
 
