@@ -69,8 +69,7 @@ class EncoderPoller:
                             connected=True, rate_hz=self._rate, diag="OK", ts=now)
         else:
             connected = self._last_rx is not None and (now - self._last_rx) < self._stale_after
-            with self._lock:
-                prev = self._snap
+            prev = self._snap
             snap = replace(prev, offset=self._offset, connected=connected,
                            rate_hz=self._rate if connected else 0.0,
                            diag="OK" if connected else "sem leitura", ts=now)
@@ -94,6 +93,7 @@ class EncoderPoller:
                     self._snap = replace(self._snap, connected=False,
                                          diag="erro: %s" % e, ts=self._now())
                 time.sleep(0.2)
+                continue
             if self._tick_sleep:
                 time.sleep(self._tick_sleep)
 
