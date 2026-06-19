@@ -36,3 +36,26 @@ def snapshot_to_dict(s: Snapshot) -> dict:
         "diag": s.diag,
         "ts": s.ts,
     }
+
+
+def bus_snapshot_to_dict(bus) -> dict:
+    """Serializa o BusSnapshot para o contrato JSON do WebSocket (type=bus)."""
+    s = bus.scan_state
+    return {
+        "type": "bus",
+        "mode": bus.mode,
+        "diag": bus.diag,
+        "settings": {"baud": bus.settings.baud,
+                     "master_addr": bus.settings.master_addr},
+        "scan": {
+            "status": s.status,
+            "current_addr": s.current_addr,
+            "scanned": s.scanned,
+            "total": s.total,
+            "error": s.error,
+            "found": [{"addr": st.addr,
+                       "station_type": st.station_type.value,
+                       "response_ms": round(st.response_ms, 2)}
+                      for st in s.found],
+        },
+    }
