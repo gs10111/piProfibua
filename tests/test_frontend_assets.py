@@ -25,5 +25,7 @@ def test_app_js_uses_ws_and_zero_command():
 
 
 def test_styles_no_inter_default():
+    import re
     css = (STATIC / "styles.css").read_text(encoding="utf-8").lower()
-    assert "inter" not in css   # fonte banida como default
+    # "Inter" banida como fonte default; \b evita falso-positivo em "pointer".
+    assert re.search(r"\binter\b", css) is None   # nenhuma fonte "Inter"
