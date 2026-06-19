@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from pyprofibus import PbConf
@@ -61,6 +62,10 @@ class Amg11Master:
             if data is not None:
                 return decode(bytes(data), self.encoder_cfg)
         return None
+
+    def set_offset(self, value):
+        """Ajusta o offset por software (zero) reusando o decode existente (DRY)."""
+        self.encoder_cfg = replace(self.encoder_cfg, offset=value)
 
     def read_once(self, timeout=5.0):
         """Bloqueia ate a primeira leitura valida ou estoura timeout (segundos)."""
