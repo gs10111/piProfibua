@@ -6,11 +6,12 @@ const html = htm.bind(h);
 
 function useSocket() {
   const [snap, setSnap] = useState({ connected: false, diag: "conectando", angle_deg: 0,
-    raw: 0, bytes_hex: "", offset: 0, rate_hz: 0 });
+    raw: 0, raw_max: 8191, bytes_hex: "", offset: 0, rate_hz: 0 });
   const ws = useRef(null);
   useEffect(() => {
     let stop = false;
     function connect() {
+      if (stop) return;
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const s = new WebSocket(`${proto}://${location.host}/ws`);
       ws.current = s;
@@ -44,7 +45,7 @@ function App() {
       </div>
 
       <div class="rows">
-        <div>bruto <b>${snap.raw} / 8191</b></div>
+        <div>bruto <b>${snap.raw} / ${snap.raw_max}</b></div>
         <div>bytes <b>${snap.bytes_hex || "--"}</b></div>
         <div>offset <b>${snap.offset}</b></div>
         <div>diag <b>${snap.diag}</b></div>

@@ -49,6 +49,21 @@ def test_rate_hz_uses_injected_clock():
     assert abs(snap.rate_hz - 20.0) < 1e-6
 
 
+def test_initial_state_is_connecting_before_first_reading():
+    # Durante o estabelecimento do DP, poll() retorna None e nunca houve leitura:
+    # deve mostrar "conectando", não "sem leitura".
+    p = EncoderPoller(FakeSource([None]), period=8192, now=FakeClock([1.0]))
+    snap = p.step()
+    assert snap.connected is False
+    assert snap.diag == "conectando"
+
+
+def test_step_exposes_raw_max():
+    p = EncoderPoller(FakeSource([0x0800]), period=8192, now=FakeClock([1.0]))
+    snap = p.step()
+    assert snap.raw_max == 8191
+
+
 def test_no_reading_marks_stale():
     p = EncoderPoller(FakeSource([0x0800, None]), period=8192,
                       now=FakeClock([1.0, 5.0]), stale_after=0.5)

@@ -26,8 +26,8 @@ def create_app(poller):
         # Cada conexão lê o snapshot compartilhado e empurra ~15 Hz;
         # entre envios, espera um comando do cliente (timeout curto).
         while True:
-            ws.send(json.dumps(snapshot_to_dict(poller.snapshot())))
             try:
+                ws.send(json.dumps(snapshot_to_dict(poller.snapshot())))
                 msg = ws.receive(timeout=1 / 15)
             except Exception:
                 break

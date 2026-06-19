@@ -19,8 +19,9 @@ class EncoderPoller:
         self._stale_after = stale_after
         self._tick_sleep = tick_sleep
 
+        self._raw_max = period - 1
         self._lock = threading.Lock()
-        self._snap = initial_snapshot(offset=initial_offset)
+        self._snap = initial_snapshot(offset=initial_offset, raw_max=self._raw_max)
         self._last_raw = 0
         self._last_rx = None      # tempo da última leitura válida
         self._rate = 0.0
@@ -65,14 +66,19 @@ class EncoderPoller:
             self._last_rx = now
             self._last_raw = reading.raw
             snap = Snapshot(angle_deg=reading.angle_deg, raw=reading.raw,
-                            bytes_hex=reading.bytes_hex, offset=self._offset,
-                            connected=True, rate_hz=self._rate, diag="OK", ts=now)
+                            raw_max=self._raw_max, bytes_hex=reading.bytes_hex,
+                            offset=self._offset, connected=True,
+                            rate_hz=self._rate, diag="OK", ts=now)
         else:
-            connected = self._last_rx is not None and (now - self._last_rx) < self._stale_after
+            if self._last_rx is None:
+                connected, diag = False, "conectando"
+            else:
+                connected = (now - self._last_rx) < self._stale_after
+                diag = "OK" if connected else "sem leitura"
             prev = self._snap
             snap = replace(prev, offset=self._offset, connected=connected,
                            rate_hz=self._rate if connected else 0.0,
-                           diag="OK" if connected else "sem leitura", ts=now)
+                           diag=diag, ts=now)
 
         with self._lock:
             self._snap = snap

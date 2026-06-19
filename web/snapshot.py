@@ -9,6 +9,7 @@ from dataclasses import dataclass
 class Snapshot:
     angle_deg: float
     raw: int
+    raw_max: int
     bytes_hex: str
     offset: int
     connected: bool
@@ -17,8 +18,8 @@ class Snapshot:
     ts: float
 
 
-def initial_snapshot(offset: int = 0) -> Snapshot:
-    return Snapshot(angle_deg=0.0, raw=0, bytes_hex="", offset=offset,
+def initial_snapshot(offset: int = 0, raw_max: int = 0) -> Snapshot:
+    return Snapshot(angle_deg=0.0, raw=0, raw_max=raw_max, bytes_hex="", offset=offset,
                     connected=False, rate_hz=0.0, diag="conectando", ts=0.0)
 
 
@@ -27,6 +28,7 @@ def snapshot_to_dict(s: Snapshot) -> dict:
         "type": "reading",
         "angle_deg": round(s.angle_deg, 3),
         "raw": s.raw,
+        "raw_max": s.raw_max,
         "bytes_hex": s.bytes_hex,
         "offset": s.offset,
         "connected": s.connected,
