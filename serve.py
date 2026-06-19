@@ -47,6 +47,31 @@ def default_slave_addr(conf_path):
     return None
 
 
+def build_controller(conf_path, encoder_path, sim=False, bus_json=None,
+                     addresses=None):
+    """Monta o BusController com as factories de produção (ou simuladas)."""
+    cfg = load_config(encoder_path)
+    store = SettingsStore(bus_json or (ROOT / "config" / "bus.json"))
+    settings = store.load(default_settings_from_conf(conf_path))
+
+    def make_exchange(s, offset):
+        src = Amg11Master(conf_path, replace(cfg, offset=offset), sim=sim,
+                          baud=s.baud, master_addr=s.master_addr)
+        return EncoderPoller(src, period=2 ** cfg.resolution_bits,
+                             initial_offset=offset)
+
+    def make_probe(s):
+        if sim:
+            slave = default_slave_addr(conf_path)
+            return SimBusProbe(found_addrs=[slave] if slave is not None else [])
+        phy = build_scan_phy(conf_path, s.baud)
+        return FdlBusProbe(FdlTransceiver(phy), master_addr=s.master_addr, phy=phy)
+
+    return BusController(make_exchange, make_probe, settings,
+                         initial_offset=cfg.offset, addresses=addresses,
+                         on_settings_saved=store.save)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--host", default="0.0.0.0")
@@ -56,26 +81,7 @@ def main(argv=None):
     p.add_argument("--sim", action="store_true", help="PHY dummy (sem hardware)")
     args = p.parse_args(argv)
 
-    cfg = load_config(args.encoder)
-    store = SettingsStore(ROOT / "config" / "bus.json")
-    settings = store.load(default_settings_from_conf(args.conf))
-
-    def make_exchange(s, offset):
-        src = Amg11Master(args.conf, replace(cfg, offset=offset), sim=args.sim,
-                          baud=s.baud, master_addr=s.master_addr)
-        return EncoderPoller(src, period=2 ** cfg.resolution_bits,
-                             initial_offset=offset)
-
-    def make_probe(s):
-        if args.sim:
-            slave = default_slave_addr(args.conf)
-            return SimBusProbe(found_addrs=[slave] if slave is not None else [])
-        phy = build_scan_phy(args.conf, s.baud)
-        return FdlBusProbe(FdlTransceiver(phy), master_addr=s.master_addr, phy=phy)
-
-    controller = BusController(make_exchange, make_probe, settings,
-                              initial_offset=cfg.offset,
-                              on_settings_saved=store.save)
+    controller = build_controller(args.conf, args.encoder, sim=args.sim)
     controller.start()
     try:
         app = create_app(controller)
