@@ -33,7 +33,7 @@ def handle_ws_message(controller, raw):
             return
 
 
-def create_app(controller):
+def create_app(controller, gsd_store=None):
     app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="")
     sock = Sock(app)
 
@@ -54,5 +54,9 @@ def create_app(controller):
             if msg is None:
                 continue
             handle_ws_message(controller, msg)
+
+    if gsd_store is not None:
+        from web.gsd_api import register_gsd_routes
+        register_gsd_routes(app, gsd_store)
 
     return app
