@@ -7,6 +7,9 @@ do Pi (TX/RX/VCC/GND). Entrega CLI + biblioteca, com modo de simulação.
 
 > A pasta ainda se chama `pi5-profibus-amg11` por legado; o alvo agora é o **Pi 3**.
 
+> 📖 **Documentação completa** (arquitetura + explicação de cada arquivo + contratos +
+> ferramenta web): [`docs/DOCUMENTACAO.md`](docs/DOCUMENTACAO.md).
+
 ## Arquitetura
 
 - `.conf` do pyprofibus (`config/amg11.conf`) → aponta para o GSD `gsd/PB13DPV0.gsd`.
