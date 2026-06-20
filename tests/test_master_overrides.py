@@ -26,3 +26,27 @@ def test_build_scan_phy_uses_given_baud():
         assert phy is not None
     finally:
         phy.close()
+
+
+def test_build_scan_phy_sets_baud_before_makephy(monkeypatch):
+    """Sem hardware: prova que o baud escolhido chega à phy antes de abrir."""
+    import profibus_amg11.master as m
+
+    captured = {}
+
+    class FakeConf:
+        def __init__(self):
+            self.phyBaud = None
+
+        def makePhy(self):
+            captured["baud"] = self.phyBaud
+            return "PHY"
+
+    class FakePbConf:
+        @staticmethod
+        def fromFile(path):
+            return FakeConf()
+
+    monkeypatch.setattr(m, "PbConf", FakePbConf)
+    assert m.build_scan_phy(CONF, 93750) == "PHY"
+    assert captured["baud"] == 93750

@@ -142,12 +142,18 @@ class BusController:
             self._diag = "config inválida: %s" % e
             return
         self._settings = new
+        saved_err = None
         if self._on_settings_saved is not None:
-            self._on_settings_saved(new)
+            try:
+                self._on_settings_saved(new)
+            except Exception as e:  # persistir não pode poluir o loop nem pular o rebuild
+                saved_err = e
         if self._mode != "scanning":
             self._teardown_engine()
             self._start_exchange()
         # se scanning: o rebuild pós-scan usa self._settings (já atualizado)
+        if saved_err is not None:
+            self._diag = "settings aplicados, falha ao salvar: %s" % saved_err
 
     def _begin_scan(self):
         if self._mode == "scanning":

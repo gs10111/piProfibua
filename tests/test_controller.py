@@ -138,6 +138,48 @@ def test_offset_preserved_across_rebuild():
     assert made["exchange"][-1][1] == 1234       # offset repassado ao novo engine
 
 
+def test_apply_settings_during_scan_defers_rebuild_until_done():
+    ctrl, made, saved = make_ctrl(probe=FakeProbe({}), addresses=[0, 1, 2, 3])
+    n = len(made["exchange"])                     # 1 (engine inicial)
+    ctrl.scan()
+    ctrl.step()                                   # entra em scanning
+    assert ctrl.bus_snapshot().mode == "scanning"
+    ctrl.apply_settings(9600, 4)
+    ctrl.step()                                   # ainda scanning: NÃO recria o engine
+    bs = ctrl.bus_snapshot()
+    assert bs.mode == "scanning"
+    assert bs.settings == BusSettings(9600, 4)    # settings refletidos já
+    assert saved == [BusSettings(9600, 4)]        # persistidos já
+    assert len(made["exchange"]) == n             # sem rebuild durante o scan
+    for _ in range(10):                           # termina o scan
+        ctrl.step()
+        if ctrl.bus_snapshot().mode == "exchange":
+            break
+    assert ctrl.bus_snapshot().mode == "exchange"
+    assert made["exchange"][-1][0] == BusSettings(9600, 4)  # rebuild com settings novos
+
+
+def test_apply_persistence_failure_still_applies_and_rebuilds():
+    made = {"exchange": []}
+
+    def make_exchange(settings, offset):
+        e = FakeEngine(offset=offset)
+        made["exchange"].append((settings, offset, e))
+        return e
+
+    def boom_save(_):
+        raise OSError("disco cheio")
+
+    ctrl = BusController(make_exchange, lambda s: FakeProbe({}), BusSettings(),
+                         addresses=[1, 2], on_settings_saved=boom_save)
+    ctrl.apply_settings(9600, 4)
+    ctrl.step()
+    bs = ctrl.bus_snapshot()
+    assert bs.settings == BusSettings(9600, 4)               # aplicado em memória
+    assert made["exchange"][-1][0] == BusSettings(9600, 4)   # rebuild aconteceu
+    assert "salvar" in bs.diag                               # avisa a falha de persistência
+
+
 def test_initial_offset_passed_to_first_engine():
     made = {"exchange": []}
 
