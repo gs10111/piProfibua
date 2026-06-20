@@ -43,3 +43,10 @@ def test_list_only_gsd(tmp_path):
     store = GsdStore(tmp_path)
     store.save("enc.gsd", AMG11)
     assert store.list() == ["enc.gsd"]
+
+
+def test_save_rejects_overwrite(tmp_path):
+    store = GsdStore(tmp_path)
+    store.save("enc.gsd", AMG11)
+    with pytest.raises(FileExistsError):
+        store.save("enc.gsd", AMG11)

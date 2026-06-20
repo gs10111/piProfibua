@@ -21,13 +21,18 @@ class GsdStore:
     def list(self):
         if not self._dir.exists():
             return []
-        return sorted(p.name for p in self._dir.glob("*.gsd"))
+        return sorted(p.name for p in self._dir.iterdir()
+                      if p.is_file() and p.suffix.lower() == ".gsd")
 
     def save(self, filename, data):
         name = self._safe(filename)
         summary = parse_gsd(data, name)        # valida; levanta GsdInfoError
+        path = self._dir / name
+        if path.exists():
+            # Não sobrescreve em silêncio (protege fixtures e evita troca furtiva).
+            raise FileExistsError(name)
         self._dir.mkdir(parents=True, exist_ok=True)
-        (self._dir / name).write_bytes(bytes(data))
+        path.write_bytes(bytes(data))
         return summary
 
     def read(self, name):

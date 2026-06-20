@@ -35,6 +35,8 @@ def handle_ws_message(controller, raw):
 
 def create_app(controller, gsd_store=None):
     app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="")
+    # GSDs reais têm dezenas de KB; corta corpo gigante (DoS) com 413 automático.
+    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
     sock = Sock(app)
 
     @app.route("/")

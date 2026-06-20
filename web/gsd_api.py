@@ -34,6 +34,8 @@ def register_gsd_routes(app, store):
             return jsonify({"error": "sem arquivo"}), 400
         try:
             summary = store.save(filename, data)
+        except FileExistsError:
+            return jsonify({"error": "GSD com esse nome já existe"}), 409
         except GsdInfoError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify(summary_to_dict(summary))

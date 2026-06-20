@@ -84,6 +84,35 @@ def test_preview_unknown_module_returns_400(tmp_path):
     assert r.status_code == 400
 
 
+def test_upload_oversize_returns_413(tmp_path):
+    c = make_client(tmp_path)
+    big = b"x" * (3 * 1024 * 1024)
+    r = c.post("/api/gsd", data={"file": (io.BytesIO(big), "big.gsd")},
+               content_type="multipart/form-data")
+    assert r.status_code == 413
+
+
+def test_upload_duplicate_returns_409(tmp_path):
+    c = make_client(tmp_path)
+    _upload(c)
+    r = _upload(c)
+    assert r.status_code == 409
+
+
+def test_unsafe_name_via_http_returns_400(tmp_path):
+    c = make_client(tmp_path)
+    assert c.get("/api/gsd/..gsd").status_code == 400
+
+
+def test_raw_upload_with_x_filename(tmp_path):
+    c = make_client(tmp_path)
+    r = c.post("/api/gsd", data=AMG11,
+               headers={"X-Filename": "raw.gsd"},
+               content_type="application/octet-stream")
+    assert r.status_code == 200
+    assert r.get_json()["filename"] == "raw.gsd"
+
+
 def test_gsd_routes_absent_without_store(tmp_path):
     app = create_app(FakeController())
     assert app.test_client().get("/api/gsd").status_code == 404
