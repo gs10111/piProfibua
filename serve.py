@@ -14,6 +14,7 @@ from profibus_amg11.config import load_config
 from profibus_amg11.master import Amg11Master, build_scan_phy
 from profibus_amg11.scan import FdlBusProbe, SimBusProbe
 from web.controller import BusController
+from web.gsd_store import GsdStore
 from web.poller import EncoderPoller
 from web.server import create_app
 from web.settings import ALLOWED_BAUDS, BusSettings, SettingsStore
@@ -82,9 +83,10 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     controller = build_controller(args.conf, args.encoder, sim=args.sim)
+    gsd_store = GsdStore(ROOT / "gsd")
     controller.start()
     try:
-        app = create_app(controller)
+        app = create_app(controller, gsd_store=gsd_store)
         app.run(host=args.host, port=args.port, threaded=True)
     finally:
         controller.stop()
