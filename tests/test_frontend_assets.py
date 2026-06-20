@@ -59,3 +59,15 @@ def test_no_emoji_in_app():
     js = (STATIC / "app.js").read_text(encoding="utf-8")
     emoji = re.compile("[\U0001F000-\U0001FAFF☀-➿]")
     assert emoji.search(js) is None
+
+
+def test_app_has_gsd_tab_and_upload():
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "GSD" in js
+    assert "/api/gsd" in js
+    assert "FormData" in js
+
+
+def test_gsd_preview_shows_cfg_and_prm():
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "cfg_hex" in js and "user_prm_hex" in js

@@ -108,9 +108,87 @@ function BusView({ bus, send }) {
     </div>`;
 }
 
+function GsdView() {
+  const [list, setList] = useState([]);
+  const [sel, setSel] = useState(null);
+  const [chosen, setChosen] = useState([]);
+  const [preview, setPreview] = useState(null);
+  const [err, setErr] = useState("");
+  const refresh = () => fetch("/api/gsd").then((r) => r.json())
+    .then((d) => setList(d.gsds || [])).catch(() => {});
+  useEffect(() => { refresh(); }, []);
+  const open = (name) => fetch(`/api/gsd/${name}`).then((r) => r.json())
+    .then((d) => { setSel(d); setChosen([]); setPreview(null); });
+  const runPreview = (mods) => fetch(`/api/gsd/${sel.filename}/preview`,
+    { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modules: mods }) })
+    .then((r) => r.json()).then(setPreview).catch(() => {});
+  const toggle = (name) => {
+    const next = chosen.includes(name) ? chosen.filter((x) => x !== name) : [...chosen, name];
+    setChosen(next);
+    if (sel) runPreview(next);
+  };
+  const upload = (file) => {
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    setErr("");
+    fetch("/api/gsd", { method: "POST", body: fd }).then(async (r) => {
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error || "falha no upload"); return; }
+      refresh();
+      open(d.filename);
+    }).catch(() => setErr("falha de rede"));
+  };
+  return html`
+    <div class="view gsd">
+      <div class="controls">
+        <label>Enviar GSD
+          <input type="file" accept=".gsd"
+                 onChange=${(e) => upload(e.target.files[0])} />
+        </label>
+      </div>
+      ${err ? html`<p class="warn">${err}</p>` : ""}
+      <table class="stations">
+        <thead><tr><th>Arquivo</th><th>Modelo</th><th>Ident</th></tr></thead>
+        <tbody>
+          ${list.map((g) => html`<tr class="clickable" onClick=${() => open(g.filename)}>
+            <td>${g.filename}</td><td>${g.model || "--"}</td><td>${g.ident_hex || "--"}</td></tr>`)}
+        </tbody>
+      </table>
+      ${list.length === 0 ? html`<p class="muted">Nenhum GSD enviado ainda.</p>` : ""}
+      ${sel ? html`
+        <div class="inspector">
+          <div class="rows">
+            <div>fabricante <b>${sel.vendor}</b></div>
+            <div>modelo <b>${sel.model}</b></div>
+            <div>ident <b>${sel.ident_hex}</b></div>
+            <div>tipo <b>${sel.modular ? "modular" : "compacto"}${sel.dpv1 ? " · DPV1" : ""}</b></div>
+          </div>
+          <div class="muted">Módulos (escolha para ver a parametrização):</div>
+          <div class="modlist">
+            ${(sel.modules || []).filter((m) => !m.preset).map((m) => html`
+              <label class="mod"><input type="checkbox" checked=${chosen.includes(m.name)}
+                onChange=${() => toggle(m.name)} /> ${m.name}</label>`)}
+          </div>
+          ${preview ? html`
+            <div class="rows">
+              <div>ident <b>${preview.ident_hex}</b></div>
+              <div>cfg (Chk_Cfg) <b>${preview.cfg_hex || "--"}</b></div>
+              <div>user_prm (Set_Prm) <b>${preview.user_prm_hex || "--"}</b></div>
+            </div>` : ""}
+        </div>` : ""}
+    </div>`;
+}
+
 function App() {
   const { encoder, bus, send } = useBusSocket();
   const [tab, setTab] = useState("encoder");
+  const view = tab === "encoder"
+    ? html`<${EncoderView} snap=${encoder} send=${send} />`
+    : tab === "bus"
+      ? html`<${BusView} bus=${bus} send=${send} />`
+      : html`<${GsdView} />`;
   return html`
     <div class="panel">
       <nav class="tabs">
@@ -118,10 +196,10 @@ function App() {
                 onClick=${() => setTab("encoder")}>Encoder</button>
         <button class=${"tab" + (tab === "bus" ? " active" : "")}
                 onClick=${() => setTab("bus")}>Barramento</button>
+        <button class=${"tab" + (tab === "gsd" ? " active" : "")}
+                onClick=${() => setTab("gsd")}>GSD</button>
       </nav>
-      ${tab === "encoder"
-        ? html`<${EncoderView} snap=${encoder} send=${send} />`
-        : html`<${BusView} bus=${bus} send=${send} />`}
+      ${view}
     </div>`;
 }
 

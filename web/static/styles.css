@@ -86,3 +86,13 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .stations th{color:var(--ink-dim);font-weight:600;font-size:11px;
   text-transform:uppercase;letter-spacing:.05em}
 .stations td{font-family:var(--mono);color:var(--ink)}
+
+/* aba GSD */
+.gsd .inspector{display:flex;flex-direction:column;gap:12px;
+  border-top:1px solid var(--hair);padding-top:14px}
+.stations tr.clickable{cursor:pointer}
+.stations tr.clickable:hover td{color:var(--ink)}
+.modlist{display:flex;flex-direction:column;gap:6px}
+.mod{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-dim);
+  font-family:var(--mono)}
+.gsd input[type=file]{color:var(--ink-dim);font-family:var(--mono);font-size:12px}
