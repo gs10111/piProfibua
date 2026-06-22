@@ -7,6 +7,22 @@ const html = htm.bind(h);
 const BAUDS = [9600, 19200, 45450, 93750, 187500, 500000, 1500000];
 const RELIABLE = [9600, 19200];
 
+// Decodifica os bytes crus do encoder (big-endian PROFIBUS) em volta + ângulo.
+// stepsPerTurn = resolução singleturn (RM3007 = 8192). 4 bytes => multivolta.
+function decodePosition(hex, stepsPerTurn) {
+  if (!hex || hex.length < 2) return null;
+  const spt = stepsPerTurn > 0 ? stepsPerTurn : 8192;
+  const value = parseInt(hex, 16);          // 1..4 bytes, MSB primeiro
+  if (!Number.isFinite(value)) return null;
+  const single = ((value % spt) + spt) % spt;
+  return {
+    value, single, stepsPerTurn: spt,
+    turns: Math.floor(value / spt),
+    angle: (single / spt) * 360,
+    multiturn: hex.length / 2 >= 4,
+  };
+}
+
 function useBusSocket() {
   const [encoder, setEncoder] = useState({ connected: false, diag: "conectando",
     angle_deg: 0, raw: 0, raw_max: 8191, bytes_hex: "", offset: 0, rate_hz: 0 });
@@ -119,6 +135,7 @@ function GsdView({ io, bus, send }) {
   const [err, setErr] = useState("");
   const [addr, setAddr] = useState(3);
   const [outHex, setOutHex] = useState("");
+  const [spt, setSpt] = useState(8192);   // passos/volta (RM3007 = 8192)
   const refresh = () => fetch("/api/gsd").then((r) => r.json())
     .then((d) => setList(d.gsds || [])).catch(() => {});
   useEffect(() => { refresh(); }, []);
@@ -203,25 +220,44 @@ function GsdView({ io, bus, send }) {
             (cfg byte). Chegar ao Data_Exchange depende de baterem com o escravo;
             senão, o diag aparece abaixo.</p>
         </div>` : ""}
-      ${io.active ? html`
+      ${io.active ? (() => {
+        const pos = decodePosition(io.in_hex, spt);
+        const live = io.connected && pos;
+        return html`
         <div class="io-panel">
           <div class="top">
-            <div class="title">I/O · addr ${io.address}</div>
+            <div class="title">Encoder · addr ${io.address}</div>
             <div class="badge"><span class=${"dot" + (io.connected ? " on" : "")}></span>
               ${io.connected ? `${(io.rate_hz || 0).toFixed(0)} Hz` : (io.diag || "conectando")}</div>
           </div>
-          <div class="rows">
-            <div>entrada <b>${io.in_hex || "--"}</b></div>
-            <div>diag <b>${io.diag}</b></div>
-          </div>
+          ${pos ? html`
+            <div class="gauge">
+              <div class="ring"></div>
+              <div class="needle" style=${`transform:translate(-50%,-100%) rotate(${pos.angle}deg)`}></div>
+              <div class="hub"></div>
+              <div class="val"><div class=${"deg" + (live ? "" : " stale")}>${pos.angle.toFixed(1)}°</div></div>
+            </div>
+            <div class="rows">
+              <div>voltas <b>${pos.multiturn ? pos.turns : "—"}</b></div>
+              <div>na volta <b>${pos.single} / ${pos.stepsPerTurn}</b></div>
+              <div>posição <b>${pos.value}</b></div>
+              <div>bytes <b>${io.in_hex || "--"}</b></div>
+            </div>` : html`
+            <div class="rows">
+              <div>entrada <b>${io.in_hex || "--"}</b></div>
+              <div>diag <b>${io.diag}</b></div>
+            </div>`}
           <div class="controls">
+            <label>passos/volta<input type="number" min="1" value=${spt}
+              onInput=${(e) => setSpt(Number(e.target.value))} /></label>
             <label>Saída (hex)<input value=${outHex}
               onInput=${(e) => setOutHex(e.target.value)}
               placeholder=${"00".repeat(io.output_size)} /></label>
             <button onClick=${() => send({ cmd: "set_output", hex: outHex })}>Enviar saída</button>
             <button class="ghost" onClick=${() => send({ cmd: "stop_generic" })}>Parar</button>
           </div>
-        </div>` : ""}
+        </div>`;
+      })() : ""}
     </div>`;
 }
 
