@@ -10,9 +10,10 @@ import threading
 import time
 from typing import Protocol, runtime_checkable
 
+from web.generic_poller import ParamSpec
 from web.scanner import BusScan, BusSnapshot, ScanState
 from web.settings import BusSettings
-from web.snapshot import Snapshot, initial_snapshot
+from web.snapshot import IoSnapshot, Snapshot, idle_io_snapshot, initial_snapshot
 
 
 @runtime_checkable
@@ -24,12 +25,21 @@ class ExchangeEngine(Protocol):
     def stop(self) -> None: ...
 
 
+@runtime_checkable
+class GenericEngine(Protocol):
+    def step(self) -> IoSnapshot: ...
+    def snapshot(self) -> IoSnapshot: ...
+    def set_output(self, data) -> None: ...
+    def stop(self) -> None: ...
+
+
 class BusController:
     def __init__(self, make_exchange, make_probe, settings, *,
                  initial_offset=0, addresses=None, now=time.monotonic,
-                 tick_sleep=0.005, on_settings_saved=None):
+                 tick_sleep=0.005, on_settings_saved=None, make_generic=None):
         self._make_exchange = make_exchange
         self._make_probe = make_probe
+        self._make_generic = make_generic
         self._settings = settings
         self._addresses = list(addresses) if addresses is not None else list(range(127))
         self._now = now
@@ -43,12 +53,15 @@ class BusController:
         self._engine = None
         self._scan = None
         self._probe = None
+        self._generic = None
         self._scan_state = ScanState()
         self._offset = initial_offset
 
         self._encoder_snap = initial_snapshot(offset=initial_offset)
         self._bus_snap = BusSnapshot(self._mode, self._settings,
                                      self._scan_state, self._diag)
+        self._io_working = idle_io_snapshot()
+        self._io_snap = self._io_working
         self._thread = None
         self._running = False
 
@@ -72,6 +85,18 @@ class BusController:
         with self._lock:
             self._pending.append(("clear_zero", None))
 
+    def param_read(self, spec):
+        with self._lock:
+            self._pending.append(("param", spec))
+
+    def set_output(self, hexstr):
+        with self._lock:
+            self._pending.append(("set_output", hexstr))
+
+    def stop_generic(self):
+        with self._lock:
+            self._pending.append(("stop_generic", None))
+
     # ---- leituras (thread web) ----
     def encoder_snapshot(self) -> Snapshot:
         with self._lock:
@@ -80,6 +105,10 @@ class BusController:
     def bus_snapshot(self) -> BusSnapshot:
         with self._lock:
             return self._bus_snap
+
+    def io_snapshot(self) -> IoSnapshot:
+        with self._lock:
+            return self._io_snap
 
     # ---- núcleo determinístico ----
     def step(self):
@@ -90,18 +119,27 @@ class BusController:
 
         if self._mode == "scanning":
             self._scan_step()
+        elif self._mode == "generic" and self._generic is not None:
+            self._io_working = self._generic.step()
         elif self._mode == "exchange" and self._engine is not None:
             snap = self._engine.step()
             self._offset = snap.offset
             with self._lock:
                 self._encoder_snap = snap
+        if self._mode != "generic":
+            self._io_working = idle_io_snapshot()
         self._publish_bus()
+        self._publish_io()
 
     # ---- helpers (só thread do controller) ----
     def _publish_bus(self):
         bus = BusSnapshot(self._mode, self._settings, self._scan_state, self._diag)
         with self._lock:
             self._bus_snap = bus
+
+    def _publish_io(self):
+        with self._lock:
+            self._io_snap = self._io_working
 
     def _handle(self, name, arg):
         if name == "zero" and self._engine is not None:
@@ -112,6 +150,14 @@ class BusController:
             self._apply(arg[0], arg[1])
         elif name == "scan":
             self._begin_scan()
+        elif name == "param":
+            self._begin_generic(arg)
+        elif name == "set_output":
+            self._do_set_output(arg)
+        elif name == "stop_generic":
+            if self._mode == "generic":
+                self._teardown_generic()
+                self._start_exchange()
 
     def _start_exchange(self):
         try:
@@ -185,6 +231,50 @@ class BusController:
             self._scan = None
             self._start_exchange()
 
+    def _begin_generic(self, spec_dict):
+        if self._mode == "scanning":
+            self._diag = "aguarde a varredura terminar"
+            return
+        try:
+            spec = ParamSpec(gsd=str(spec_dict["gsd"]),
+                             address=int(spec_dict["address"]),
+                             modules=tuple(spec_dict.get("modules", [])),
+                             input_size=int(spec_dict["input_size"]),
+                             output_size=int(spec_dict["output_size"]))
+        except (KeyError, TypeError, ValueError) as e:
+            self._diag = "parâmetros inválidos: %s" % e
+            return
+        self._teardown_engine()
+        try:
+            self._generic = self._make_generic(self._settings, spec) \
+                if self._make_generic else None
+            if self._generic is None:
+                raise RuntimeError("parametrização não suportada")
+            self._mode = "generic"
+            self._diag = "parametrizando"
+        except Exception as e:
+            self._generic = None
+            self._mode = "idle"
+            self._diag = "erro ao parametrizar: %s" % e
+
+    def _do_set_output(self, hexstr):
+        if self._mode != "generic" or self._generic is None:
+            return
+        try:
+            raw = bytes.fromhex(hexstr or "")
+        except (ValueError, TypeError):
+            self._diag = "saída hex inválida"
+            return
+        self._generic.set_output(raw)
+
+    def _teardown_generic(self):
+        if self._generic is not None:
+            try:
+                self._generic.stop()
+            except Exception:
+                pass
+            self._generic = None
+
     # ---- ciclo da thread ----
     def start(self):
         self._running = True
@@ -208,6 +298,7 @@ class BusController:
         if self._thread is not None:
             self._thread.join(timeout=1.0)
         self._teardown_engine()
+        self._teardown_generic()
         if self._probe is not None:
             try:
                 self._probe.close()
