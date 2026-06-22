@@ -3,7 +3,7 @@ import json
 from web.scanner import BusSnapshot, ScanState
 from web.server import create_app, handle_ws_message
 from web.settings import BusSettings
-from web.snapshot import initial_snapshot
+from web.snapshot import idle_io_snapshot, initial_snapshot
 
 
 class FakeController:
@@ -27,6 +27,18 @@ class FakeController:
 
     def apply_settings(self, baud, master_addr):
         self.calls.append(("apply", baud, master_addr))
+
+    def io_snapshot(self):
+        return idle_io_snapshot()
+
+    def param_read(self, spec):
+        self.calls.append(("param", spec["address"]))
+
+    def set_output(self, hexstr):
+        self.calls.append(("set_output", hexstr))
+
+    def stop_generic(self):
+        self.calls.append(("stop",))
 
 
 def test_index_served():
@@ -62,3 +74,14 @@ def test_handle_invalid_messages_ignored():
     handle_ws_message(c, json.dumps({"cmd": "apply_settings", "baud": "x"}))
     handle_ws_message(c, json.dumps({"nope": 1}))
     assert c.calls == []
+
+
+def test_handle_param_read_set_output_stop():
+    c = FakeController()
+    handle_ws_message(c, json.dumps({"cmd": "param_read", "gsd": "x.gsd",
+        "address": 9, "modules": ["m"], "input_size": 2, "output_size": 0}))
+    handle_ws_message(c, json.dumps({"cmd": "set_output", "hex": "00ff"}))
+    handle_ws_message(c, json.dumps({"cmd": "stop_generic"}))
+    assert ("param", 9) in c.calls
+    assert ("set_output", "00ff") in c.calls
+    assert ("stop",) in c.calls
