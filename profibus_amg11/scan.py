@@ -47,26 +47,34 @@ class BusProbe(Protocol):
 class FdlBusProbe:
     """Probe FDL real: envia Request-FDL-Status e lê a resposta de um endereço."""
 
-    def __init__(self, transceiver, master_addr, timeout=0.05,
-                 now=time.monotonic, phy=None):
+    def __init__(self, transceiver, master_addr, timeout=0.1,
+                 now=time.monotonic, phy=None, poll_slice=0.01):
         self._trans = transceiver
         self._master_addr = master_addr
         self._timeout = timeout
         self._now = now
         self._phy = phy
+        self._poll_slice = poll_slice
 
     def probe(self, addr):
+        # Libera a reserva de barramento do endereço anterior (senão o maxReplyLen=255
+        # do FdlTransceiver segura ~146ms@19200 e dessincroniza envio/leitura).
+        if self._phy is not None:
+            self._phy.releaseBus()
         req = FdlTelegram_FdlStat_Req(da=addr, sa=self._master_addr)
         start = self._now()
         self._trans.send(FdlFCB(enable=False), req)
-        ok, tel = self._trans.poll(self._timeout)
-        if not ok or tel is None or tel.sa is None:
-            return None
-        if (tel.sa & FdlTelegram.ADDRESS_MASK) != addr:
-            return None
-        return Station(addr=addr,
-                       station_type=StationType.from_fc(tel.fc or 0),
-                       response_ms=(self._now() - start) * 1000.0)
+        deadline = start + self._timeout
+        # Polla em laço até o deadline (como o mestre DP), montando a resposta.
+        while True:
+            ok, tel = self._trans.poll(self._poll_slice)
+            if (ok and tel is not None and tel.sa is not None
+                    and (tel.sa & FdlTelegram.ADDRESS_MASK) == addr):
+                return Station(addr=addr,
+                               station_type=StationType.from_fc(tel.fc or 0),
+                               response_ms=(self._now() - start) * 1000.0)
+            if self._now() >= deadline:
+                return None
 
     def close(self):
         if self._phy is not None:

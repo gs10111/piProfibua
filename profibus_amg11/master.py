@@ -98,15 +98,18 @@ class Amg11Master:
             self.master.destroy()
 
 
-def build_scan_phy(conf_path, baud):
+def build_scan_phy(conf_path, baud, debug=False):
     """Cria uma PHY avulsa (no baud dado) para a varredura FDL.
 
     Reusa o mesmo .conf do mestre (chdir para resolver o GSD relativo). O
     chamador é dono do fechamento: chame phy.close() ao terminar.
+    debug=True liga o trace de TX/RX da PHY (diagnóstico da varredura).
     """
     conf_path = Path(conf_path).resolve()
     project_root = conf_path.parent.parent
     with _chdir(project_root):
         conf = PbConf.fromFile(str(conf_path))
         conf.phyBaud = baud
+        if debug:
+            conf.debug = 2
         return conf.makePhy()
