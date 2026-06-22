@@ -203,4 +203,6 @@ function App() {
     </div>`;
 }
 
-render(html`<${App} />`, document.getElementById("app"));
+const root = document.getElementById("app");
+root.innerHTML = "";  // remove o placeholder "carregando…" (Preact não limpa container não-vazio)
+render(html`<${App} />`, root);
