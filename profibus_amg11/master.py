@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from pyprofibus import PbConf
@@ -30,7 +31,8 @@ class Amg11Master:
     sim: se True, usa o PHY dummy (sem RS485) para rodar sem hardware.
     """
 
-    def __init__(self, conf_path, encoder_cfg, sim=False, debug=False):
+    def __init__(self, conf_path, encoder_cfg, sim=False, debug=False,
+                 baud=None, master_addr=None):
         self.encoder_cfg = encoder_cfg
         self._out = bytearray(encoder_cfg.control_word.to_bytes(2, "big"))
 
@@ -40,6 +42,10 @@ class Amg11Master:
             conf = PbConf.fromFile(str(conf_path))
             if sim:
                 conf.phyType = "dummyslave"
+            if baud is not None:
+                conf.phyBaud = baud
+            if master_addr is not None:
+                conf.dpMasterAddr = master_addr
             conf.debug = 2 if debug else 0
             self.master = conf.makeDPM()
 
@@ -61,6 +67,10 @@ class Amg11Master:
             if data is not None:
                 return decode(bytes(data), self.encoder_cfg)
         return None
+
+    def set_offset(self, value):
+        """Ajusta o offset por software (zero) reusando o decode existente (DRY)."""
+        self.encoder_cfg = replace(self.encoder_cfg, offset=value)
 
     def read_once(self, timeout=5.0):
         """Bloqueia ate a primeira leitura valida ou estoura timeout (segundos)."""
@@ -86,3 +96,17 @@ class Amg11Master:
     def close(self):
         with contextlib.suppress(Exception):
             self.master.destroy()
+
+
+def build_scan_phy(conf_path, baud):
+    """Cria uma PHY avulsa (no baud dado) para a varredura FDL.
+
+    Reusa o mesmo .conf do mestre (chdir para resolver o GSD relativo). O
+    chamador é dono do fechamento: chame phy.close() ao terminar.
+    """
+    conf_path = Path(conf_path).resolve()
+    project_root = conf_path.parent.parent
+    with _chdir(project_root):
+        conf = PbConf.fromFile(str(conf_path))
+        conf.phyBaud = baud
+        return conf.makePhy()

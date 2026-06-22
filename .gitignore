@@ -2,3 +2,9 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.superpowers/
+config/bus.json
+# Uploads de GSD em runtime são ignorados; as 2 GSDs de referência (fixtures) ficam.
+gsd/*.gsd
+!gsd/PB13DPV0.gsd
+!gsd/IFM_0E75.gsd
