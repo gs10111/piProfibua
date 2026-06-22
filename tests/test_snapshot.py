@@ -1,7 +1,8 @@
 from profibus_amg11.scan import Station, StationType
 from web.scanner import BusSnapshot, ScanState
 from web.settings import BusSettings
-from web.snapshot import (Snapshot, bus_snapshot_to_dict, initial_snapshot,
+from web.snapshot import (IoSnapshot, Snapshot, bus_snapshot_to_dict,
+                          idle_io_snapshot, initial_snapshot, io_snapshot_to_dict,
                           snapshot_to_dict)
 
 
@@ -46,3 +47,13 @@ def test_bus_snapshot_to_dict_shape():
     assert d["scan"]["scanned"] == 3 and d["scan"]["total"] == 10
     assert d["scan"]["found"] == [
         {"addr": 4, "station_type": "slave", "response_ms": 2.35}]
+
+
+def test_io_snapshot_to_dict_shape():
+    s = IoSnapshot(active=True, address=9, connected=True, diag="OK",
+                   in_hex="1234", out_hex="00", input_size=2, output_size=1,
+                   rate_hz=12.34, ts=1.0)
+    d = io_snapshot_to_dict(s)
+    assert d["type"] == "io" and d["active"] is True and d["address"] == 9
+    assert d["in_hex"] == "1234" and d["rate_hz"] == 12.3
+    assert idle_io_snapshot(address=9).active is False
