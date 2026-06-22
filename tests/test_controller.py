@@ -237,7 +237,7 @@ def make_ctrl_generic():
 
 def _spec():
     return {"gsd": "ifm.gsd", "address": 9, "modules": ["Class 2 Multiturn"],
-            "input_size": 2, "output_size": 0}
+            "input_size": 2, "output_size": 2}
 
 
 def test_param_read_enters_generic():
@@ -271,7 +271,8 @@ def test_stop_generic_returns_to_exchange():
     assert ctrl.io_snapshot().active is False
 
 
-def test_param_read_build_failure_goes_idle():
+def test_param_read_build_failure_restores_exchange():
+    # GenericDpMaster fecha a serial em falha -> seguro voltar à troca do encoder.
     def boom(s, spec):
         raise RuntimeError("sem GSD")
 
@@ -279,5 +280,29 @@ def test_param_read_build_failure_goes_idle():
                          BusSettings(), addresses=[1, 2], make_generic=boom)
     ctrl.param_read(_spec())
     ctrl.step()
-    assert ctrl.bus_snapshot().mode == "idle"
+    assert ctrl.bus_snapshot().mode == "exchange"
     assert "erro" in ctrl.bus_snapshot().diag
+
+
+def test_scan_during_generic_tears_down_generic():
+    probe = FakeProbe({})
+    ctrl, made = make_ctrl_generic()
+    ctrl.param_read(_spec())
+    ctrl.step()
+    g = made["generic"][-1][1]
+    ctrl.scan()
+    ctrl.step()
+    assert g.stopped is True                        # generic não fica dono da serial
+    assert ctrl.bus_snapshot().mode != "generic"
+    assert ctrl.io_snapshot().active is False
+
+
+def test_set_output_wrong_size_rejected():
+    ctrl, made = make_ctrl_generic()               # _spec output_size=2
+    ctrl.param_read(_spec())
+    ctrl.step()
+    g = made["generic"][-1][1]
+    ctrl.set_output("00ffaa")                       # 3 bytes != 2
+    ctrl.step()
+    assert g.out is None                            # não encaminhou
+    assert "2 byte" in ctrl.io_snapshot().diag
