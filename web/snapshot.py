@@ -38,6 +38,36 @@ def snapshot_to_dict(s: Snapshot) -> dict:
     }
 
 
+@dataclass(frozen=True)
+class IoSnapshot:
+    active: bool
+    address: int
+    connected: bool
+    diag: str
+    in_hex: str
+    out_hex: str
+    input_size: int
+    output_size: int
+    rate_hz: float
+    ts: float
+
+
+def idle_io_snapshot(address: int = 0, input_size: int = 0,
+                     output_size: int = 0) -> IoSnapshot:
+    return IoSnapshot(active=False, address=address, connected=False, diag="",
+                      in_hex="", out_hex="", input_size=input_size,
+                      output_size=output_size, rate_hz=0.0, ts=0.0)
+
+
+def io_snapshot_to_dict(s: IoSnapshot) -> dict:
+    return {
+        "type": "io", "active": s.active, "address": s.address,
+        "connected": s.connected, "diag": s.diag, "in_hex": s.in_hex,
+        "out_hex": s.out_hex, "input_size": s.input_size,
+        "output_size": s.output_size, "rate_hz": round(s.rate_hz, 1), "ts": s.ts,
+    }
+
+
 def bus_snapshot_to_dict(bus) -> dict:
     """Serializa o BusSnapshot para o contrato JSON do WebSocket (type=bus)."""
     s = bus.scan_state

@@ -1,7 +1,7 @@
 from profibus_amg11.scan import Station, StationType
 from web.controller import BusController
 from web.settings import BusSettings
-from web.snapshot import Snapshot
+from web.snapshot import IoSnapshot, Snapshot
 
 
 def _snap(offset=0, connected=True):
@@ -191,3 +191,93 @@ def test_initial_offset_passed_to_first_engine():
     BusController(make_exchange, lambda s: FakeProbe({}),
                   BusSettings(), initial_offset=777, addresses=[1, 2])
     assert made["exchange"][0][1] == 777
+
+
+def _io(in_hex=""):
+    return IoSnapshot(active=True, address=9, connected=True, diag="OK",
+                      in_hex=in_hex, out_hex="", input_size=2, output_size=0,
+                      rate_hz=0.0, ts=0.0)
+
+
+class FakeGenericEngine:
+    def __init__(self):
+        self.out = None
+        self.stopped = False
+
+    def step(self):
+        return _io(in_hex="abcd")
+
+    def snapshot(self):
+        return _io(in_hex="abcd")
+
+    def set_output(self, data):
+        self.out = bytes(data)
+
+    def stop(self):
+        self.stopped = True
+
+
+def make_ctrl_generic():
+    made = {"exchange": [], "generic": []}
+
+    def make_exchange(s, o):
+        e = FakeEngine(offset=o)
+        made["exchange"].append(e)
+        return e
+
+    def make_generic(s, spec):
+        g = FakeGenericEngine()
+        made["generic"].append((spec, g))
+        return g
+
+    ctrl = BusController(make_exchange, lambda s: FakeProbe({}), BusSettings(),
+                         addresses=[1, 2], make_generic=make_generic)
+    return ctrl, made
+
+
+def _spec():
+    return {"gsd": "ifm.gsd", "address": 9, "modules": ["Class 2 Multiturn"],
+            "input_size": 2, "output_size": 0}
+
+
+def test_param_read_enters_generic():
+    ctrl, made = make_ctrl_generic()
+    enc = made["exchange"][0]
+    ctrl.param_read(_spec())
+    ctrl.step()
+    assert enc.stopped is True
+    assert ctrl.bus_snapshot().mode == "generic"
+    assert ctrl.io_snapshot().in_hex == "abcd"
+    assert made["generic"][-1][0].address == 9
+
+
+def test_set_output_forwarded_in_generic():
+    ctrl, made = make_ctrl_generic()
+    ctrl.param_read(_spec())
+    ctrl.step()
+    ctrl.set_output("00ff")
+    ctrl.step()
+    assert made["generic"][-1][1].out == b"\x00\xff"
+
+
+def test_stop_generic_returns_to_exchange():
+    ctrl, made = make_ctrl_generic()
+    ctrl.param_read(_spec())
+    ctrl.step()
+    g = made["generic"][-1][1]
+    ctrl.stop_generic()
+    ctrl.step()
+    assert g.stopped is True and ctrl.bus_snapshot().mode == "exchange"
+    assert ctrl.io_snapshot().active is False
+
+
+def test_param_read_build_failure_goes_idle():
+    def boom(s, spec):
+        raise RuntimeError("sem GSD")
+
+    ctrl = BusController(lambda s, o: FakeEngine(), lambda s: FakeProbe({}),
+                         BusSettings(), addresses=[1, 2], make_generic=boom)
+    ctrl.param_read(_spec())
+    ctrl.step()
+    assert ctrl.bus_snapshot().mode == "idle"
+    assert "erro" in ctrl.bus_snapshot().diag
