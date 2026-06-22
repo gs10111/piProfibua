@@ -118,8 +118,6 @@ function GsdView({ io, send }) {
   const [preview, setPreview] = useState(null);
   const [err, setErr] = useState("");
   const [addr, setAddr] = useState(3);
-  const [inSize, setInSize] = useState(2);
-  const [outSize, setOutSize] = useState(0);
   const [outHex, setOutHex] = useState("");
   const refresh = () => fetch("/api/gsd").then((r) => r.json())
     .then((d) => setList(d.gsds || [])).catch(() => {});
@@ -183,20 +181,19 @@ function GsdView({ io, send }) {
               <div>ident <b>${preview.ident_hex}</b></div>
               <div>cfg (Chk_Cfg) <b>${preview.cfg_hex || "--"}</b></div>
               <div>user_prm (Set_Prm) <b>${preview.user_prm_hex || "--"}</b></div>
+              <div>lê / escreve <b>${preview.in_size} B / ${preview.out_size} B</b></div>
             </div>` : ""}
           <div class="controls">
             <label>Endereço<input type="number" min="1" max="126" value=${addr}
               onInput=${(e) => setAddr(Number(e.target.value))} /></label>
-            <label>Entrada (bytes)<input type="number" min="0" max="246" value=${inSize}
-              onInput=${(e) => setInSize(Number(e.target.value))} /></label>
-            <label>Saída (bytes)<input type="number" min="0" max="246" value=${outSize}
-              onInput=${(e) => setOutSize(Number(e.target.value))} /></label>
-            <button onClick=${() => send({ cmd: "param_read", gsd: sel.filename,
-              address: addr, modules: chosen, input_size: inSize, output_size: outSize })}>
+            <button disabled=${chosen.length === 0}
+              onClick=${() => send({ cmd: "param_read", gsd: sel.filename,
+              address: addr, modules: chosen })}>
               Parametrizar e ler</button>
           </div>
-          <p class="muted">Os tamanhos vêm do módulo (veja os cfg bytes). Chegar ao
-            Data_Exchange depende de baterem com o escravo; senão, o diag aparece abaixo.</p>
+          <p class="muted">Os tamanhos de I/O são derivados do(s) módulo(s) escolhido(s)
+            (cfg byte). Chegar ao Data_Exchange depende de baterem com o escravo;
+            senão, o diag aparece abaixo.</p>
         </div>` : ""}
       ${io.active ? html`
         <div class="io-panel">
