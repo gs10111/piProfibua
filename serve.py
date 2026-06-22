@@ -11,9 +11,11 @@ from pathlib import Path
 from pyprofibus.fdl import FdlTransceiver
 
 from profibus_amg11.config import load_config
+from profibus_amg11.generic import GenericDpMaster
 from profibus_amg11.master import Amg11Master, build_scan_phy
 from profibus_amg11.scan import FdlBusProbe, SimBusProbe
 from web.controller import BusController
+from web.generic_poller import GenericPoller
 from web.gsd_store import GsdStore
 from web.poller import EncoderPoller
 from web.server import create_app
@@ -49,11 +51,12 @@ def default_slave_addr(conf_path):
 
 
 def build_controller(conf_path, encoder_path, sim=False, bus_json=None,
-                     addresses=None):
+                     addresses=None, gsd_dir=None):
     """Monta o BusController com as factories de produção (ou simuladas)."""
     cfg = load_config(encoder_path)
     store = SettingsStore(bus_json or (ROOT / "config" / "bus.json"))
     settings = store.load(default_settings_from_conf(conf_path))
+    gsd_store = GsdStore(gsd_dir or (ROOT / "gsd"))
 
     def make_exchange(s, offset):
         src = Amg11Master(conf_path, replace(cfg, offset=offset), sim=sim,
@@ -68,9 +71,16 @@ def build_controller(conf_path, encoder_path, sim=False, bus_json=None,
         phy = build_scan_phy(conf_path, s.baud)
         return FdlBusProbe(FdlTransceiver(phy), master_addr=s.master_addr, phy=phy)
 
+    def make_generic(s, spec):
+        data = gsd_store.read(spec.gsd)   # FileNotFoundError/GsdInfoError -> idle no controller
+        src = GenericDpMaster(conf_path, data, spec.address, list(spec.modules),
+                              spec.input_size, spec.output_size,
+                              baud=s.baud, master_addr=s.master_addr, sim=sim)
+        return GenericPoller(src, spec.address, spec.input_size, spec.output_size)
+
     return BusController(make_exchange, make_probe, settings,
                          initial_offset=cfg.offset, addresses=addresses,
-                         on_settings_saved=store.save)
+                         on_settings_saved=store.save, make_generic=make_generic)
 
 
 def main(argv=None):
