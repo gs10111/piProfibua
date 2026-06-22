@@ -49,7 +49,7 @@ def scan_bus(args, log):
     else:
         from pyprofibus.fdl import FdlTransceiver
         from profibus_amg11.master import build_scan_phy
-        phy = build_scan_phy(args.conf, baud)
+        phy = build_scan_phy(args.conf, baud, debug=args.verbose)
         probe = FdlBusProbe(FdlTransceiver(phy), master_addr=master_addr,
                             timeout=args.scan_timeout, phy=phy)
 

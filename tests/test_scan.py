@@ -15,10 +15,16 @@ class FakeClock:
 
 
 class FakeTransceiver:
-    """Roteiriza respostas pelo destino sondado: addr -> FdlTelegram | None."""
+    """Roteiriza respostas pelo destino sondado: addr -> FdlTelegram | None.
 
-    def __init__(self, replies):
+    delay = nº de polls que retornam None antes de entregar a resposta
+    (simula a resposta chegando alguns polls depois do envio).
+    """
+
+    def __init__(self, replies, delay=0):
         self._replies = replies
+        self._delay = delay
+        self._polls = 0
         self.sent = []
         self._last_da = None
 
@@ -27,6 +33,9 @@ class FakeTransceiver:
         self.sent.append(telegram.da)
 
     def poll(self, timeout):
+        self._polls += 1
+        if self._polls <= self._delay:
+            return (False, None)
         tel = self._replies.get(self._last_da)
         return (tel is not None, tel)
 
@@ -52,7 +61,8 @@ def test_probe_returns_station_on_reply():
 
 def test_probe_returns_none_on_silence():
     trans = FakeTransceiver({})
-    probe = FdlBusProbe(trans, master_addr=2)
+    probe = FdlBusProbe(trans, master_addr=2, timeout=0.05,
+                        now=FakeClock([0.0, 1.0]))
     assert probe.probe(9) is None
 
 
@@ -60,8 +70,20 @@ def test_probe_ignores_reply_from_other_address():
     reply = FdlTelegram_FdlStat_Con(da=2, sa=99,
                                     fc=FdlTelegram.FC_OK | FdlTelegram.FC_SLAVE)
     trans = FakeTransceiver({7: reply})
-    probe = FdlBusProbe(trans, master_addr=2)
+    probe = FdlBusProbe(trans, master_addr=2, timeout=0.05,
+                        now=FakeClock([0.0, 1.0]))
     assert probe.probe(7) is None
+
+
+def test_probe_polls_until_reply_arrives():
+    # A resposta chega no 2º poll: o laço tem que continuar pollando até o deadline.
+    reply = FdlTelegram_FdlStat_Con(da=2, sa=7,
+                                    fc=FdlTelegram.FC_OK | FdlTelegram.FC_SLAVE)
+    trans = FakeTransceiver({7: reply}, delay=1)
+    probe = FdlBusProbe(trans, master_addr=2, timeout=0.05,
+                        now=FakeClock([0.0, 0.01, 0.02]))
+    st = probe.probe(7)
+    assert st is not None and st.addr == 7
 
 
 def test_sim_probe_finds_listed_addrs():
