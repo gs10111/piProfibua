@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import replace
 from typing import Protocol, runtime_checkable
 
 from web.generic_poller import ParamSpec
@@ -54,6 +55,8 @@ class BusController:
         self._scan = None
         self._probe = None
         self._generic = None
+        self._param = None
+        self._io_error = None
         self._scan_state = ScanState()
         self._offset = initial_offset
 
@@ -120,7 +123,10 @@ class BusController:
         if self._mode == "scanning":
             self._scan_step()
         elif self._mode == "generic" and self._generic is not None:
-            self._io_working = self._generic.step()
+            snap = self._generic.step()
+            if self._io_error:
+                snap = replace(snap, diag=self._io_error)
+            self._io_working = snap
         elif self._mode == "exchange" and self._engine is not None:
             snap = self._engine.step()
             self._offset = snap.offset
@@ -204,6 +210,8 @@ class BusController:
     def _begin_scan(self):
         if self._mode == "scanning":
             return
+        self._teardown_generic()          # dono único: nunca scan + generic na mesma porta
+        self._io_working = idle_io_snapshot()
         self._teardown_engine()
         try:
             self._probe = self._make_probe(self._settings)
@@ -238,9 +246,7 @@ class BusController:
         try:
             spec = ParamSpec(gsd=str(spec_dict["gsd"]),
                              address=int(spec_dict["address"]),
-                             modules=tuple(spec_dict.get("modules", [])),
-                             input_size=int(spec_dict["input_size"]),
-                             output_size=int(spec_dict["output_size"]))
+                             modules=tuple(spec_dict.get("modules", [])))
         except (KeyError, TypeError, ValueError) as e:
             self._diag = "parâmetros inválidos: %s" % e
             return
@@ -250,12 +256,16 @@ class BusController:
                 if self._make_generic else None
             if self._generic is None:
                 raise RuntimeError("parametrização não suportada")
+            self._param = spec
+            self._io_error = None
             self._mode = "generic"
             self._diag = "parametrizando"
         except Exception as e:
+            # GenericDpMaster.__init__ fecha a serial em falha -> seguro recriar a troca.
             self._generic = None
-            self._mode = "idle"
-            self._diag = "erro ao parametrizar: %s" % e
+            err = "erro ao parametrizar: %s" % e
+            self._start_exchange()
+            self._diag = err
 
     def _do_set_output(self, hexstr):
         if self._mode != "generic" or self._generic is None:
@@ -263,11 +273,19 @@ class BusController:
         try:
             raw = bytes.fromhex(hexstr or "")
         except (ValueError, TypeError):
-            self._diag = "saída hex inválida"
+            self._io_error = "saída hex inválida"
             return
+        expected = self._generic.snapshot().output_size   # write derivado do GSD
+        if len(raw) != expected:
+            # tamanho errado faria o poll() lançar DpError a cada ciclo — rejeita antes.
+            self._io_error = "saída deve ter %d byte(s)" % expected
+            return
+        self._io_error = None
         self._generic.set_output(raw)
 
     def _teardown_generic(self):
+        self._param = None
+        self._io_error = None
         if self._generic is not None:
             try:
                 self._generic.stop()

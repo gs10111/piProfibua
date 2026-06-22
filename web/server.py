@@ -8,7 +8,7 @@ from pathlib import Path
 from flask import Flask, send_from_directory
 from flask_sock import Sock
 
-from web.snapshot import bus_snapshot_to_dict, snapshot_to_dict
+from web.snapshot import bus_snapshot_to_dict, io_snapshot_to_dict, snapshot_to_dict
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -31,6 +31,12 @@ def handle_ws_message(controller, raw):
             controller.apply_settings(int(data["baud"]), int(data["master_addr"]))
         except (KeyError, TypeError, ValueError):
             return
+    elif cmd == "param_read":
+        controller.param_read(data)
+    elif cmd == "set_output":
+        controller.set_output(data.get("hex", ""))
+    elif cmd == "stop_generic":
+        controller.stop_generic()
 
 
 def create_app(controller, gsd_store=None):
@@ -50,6 +56,7 @@ def create_app(controller, gsd_store=None):
             try:
                 ws.send(json.dumps(snapshot_to_dict(controller.encoder_snapshot())))
                 ws.send(json.dumps(bus_snapshot_to_dict(controller.bus_snapshot())))
+                ws.send(json.dumps(io_snapshot_to_dict(controller.io_snapshot())))
                 msg = ws.receive(timeout=1 / 15)
             except Exception:
                 break

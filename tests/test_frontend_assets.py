@@ -71,3 +71,10 @@ def test_app_has_gsd_tab_and_upload():
 def test_gsd_preview_shows_cfg_and_prm():
     js = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "cfg_hex" in js and "user_prm_hex" in js
+
+
+def test_app_has_parameterize_and_io():
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "Parametrizar e ler" in js
+    assert "param_read" in js and "set_output" in js and "stop_generic" in js
+    assert 'type === "io"' in js

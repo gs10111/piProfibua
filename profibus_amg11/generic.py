@@ -8,6 +8,7 @@ from pyprofibus import PbConf
 from pyprofibus.gsd.interp import GsdInterp
 from pyprofibus.gsd.parser import GsdError
 
+from profibus_amg11.gsd_info import decode_cfg_io
 from profibus_amg11.master import _chdir
 
 
@@ -32,8 +33,13 @@ class _GenericSlaveConf:
         self.watchdogMs = 1000
 
 
-def make_generic_slave_desc(gsd_bytes, address, modules, input_size, output_size):
-    """Monta um DpSlaveDesc de um GSD (bytes) + módulos + endereço + tamanhos."""
+def make_generic_slave_desc(gsd_bytes, address, modules):
+    """Monta um DpSlaveDesc de um GSD (bytes) + módulos, derivando os tamanhos.
+
+    Os tamanhos vêm do byte de config do(s) módulo(s) e são gravados na convenção
+    *escravo-cêntrica* do pyprofibus: ``inputSize`` = o que o MESTRE ESCREVE (write),
+    ``outputSize`` = o que o MESTRE LÊ (read). Daí a inversão proposital abaixo.
+    """
     from pyprofibus.dp_master import DpSlaveDesc
     try:
         gsd = GsdInterp.fromBytes(bytes(gsd_bytes), filename="<generic>")
@@ -42,7 +48,17 @@ def make_generic_slave_desc(gsd_bytes, address, modules, input_size, output_size
             gsd.clearConfiguredModules()
             for name in chosen:
                 gsd.setConfiguredModule(name)
-        conf = _GenericSlaveConf(gsd, address, input_size, output_size)
+        cfg = bytearray()
+        for e in gsd.getCfgDataElements():
+            cfg += bytes(e.getDU())
+        read, write = decode_cfg_io(cfg)
+        if write <= 0:
+            # pyprofibus exige que o mestre escreva >=1 byte (DPM1.addSlave).
+            # Módulos só-leitura (ex.: Class 1) não rodam; use Class 2 / ifm.
+            raise GenericError(
+                "módulo só-leitura (mestre escreve 0 B) não é suportado; "
+                "escolha um módulo com saída (Class 2 ou ifm)")
+        conf = _GenericSlaveConf(gsd, address, input_size=write, output_size=read)
         desc = DpSlaveDesc(conf)
         desc.setCfgDataElements(gsd.getCfgDataElements())
         desc.setUserPrmData(gsd.getUserPrmData())
@@ -59,9 +75,7 @@ class GenericDpMaster:
     """DPM1 de um escravo genérico; troca DX e expõe I/O cru. (GenericSource)"""
 
     def __init__(self, conf_path, gsd_bytes, address, modules,
-                 input_size, output_size, baud=None, master_addr=None,
-                 sim=False, debug=False):
-        self._out = bytearray(output_size)
+                 baud=None, master_addr=None, sim=False, debug=False):
         conf_path = Path(conf_path).resolve()
         project_root = conf_path.parent.parent
         with _chdir(project_root):
@@ -76,8 +90,11 @@ class GenericDpMaster:
             phy = conf.makePhy()                  # sim: echoDXSize vem dos slaveConfs do .conf
             self.master = conf.makeDPM(phy=phy)   # mestre sem escravos
         try:
-            self.slave = make_generic_slave_desc(gsd_bytes, address, modules,
-                                                 input_size, output_size)
+            self.slave = make_generic_slave_desc(gsd_bytes, address, modules)
+            # tamanhos derivados, na ótica do mestre (intuitivos para a UI):
+            self.input_size = self.slave.outputSize   # mestre LÊ (posição)
+            self.output_size = self.slave.inputSize   # mestre ESCREVE (preset)
+            self._out = bytearray(self.output_size)
             self.master.addSlave(self.slave)
             self.master.initialize()
         except Exception:
