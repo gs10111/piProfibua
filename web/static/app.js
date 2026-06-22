@@ -111,7 +111,7 @@ function BusView({ bus, send }) {
     </div>`;
 }
 
-function GsdView({ io, send }) {
+function GsdView({ io, bus, send }) {
   const [list, setList] = useState([]);
   const [sel, setSel] = useState(null);
   const [chosen, setChosen] = useState([]);
@@ -145,6 +145,10 @@ function GsdView({ io, send }) {
       open(d.filename);
     }).catch(() => setErr("falha de rede"));
   };
+  // módulo só-leitura (mestre escreve 0) não roda no pyprofibus -> orienta antes do clique
+  const readonly = preview && chosen.length > 0 && preview.out_size === 0;
+  // erros de parametrização viram diag do barramento; espelha aqui na aba GSD
+  const paramErr = bus && bus.diag && bus.diag.indexOf("parametrizar") >= 0 ? bus.diag : "";
   return html`
     <div class="view gsd">
       <div class="controls">
@@ -186,11 +190,15 @@ function GsdView({ io, send }) {
           <div class="controls">
             <label>Endereço<input type="number" min="1" max="126" value=${addr}
               onInput=${(e) => setAddr(Number(e.target.value))} /></label>
-            <button disabled=${chosen.length === 0}
+            <button disabled=${chosen.length === 0 || readonly}
               onClick=${() => send({ cmd: "param_read", gsd: sel.filename,
               address: addr, modules: chosen })}>
               Parametrizar e ler</button>
           </div>
+          ${readonly ? html`<p class="warn">Class 1 é o perfil correto do encoder, mas o
+            pyprofibus não consegue pollar escravo só-leitura (mestre escreve 0 B). Para ler a
+            <b>mesma</b> posição, use <b>Class 2 Multiturn</b> (4 B de saída zerados, sem preset).</p>` : ""}
+          ${paramErr ? html`<p class="warn">${paramErr}</p>` : ""}
           <p class="muted">Os tamanhos de I/O são derivados do(s) módulo(s) escolhido(s)
             (cfg byte). Chegar ao Data_Exchange depende de baterem com o escravo;
             senão, o diag aparece abaixo.</p>
@@ -224,7 +232,7 @@ function App() {
     ? html`<${EncoderView} snap=${encoder} send=${send} />`
     : tab === "bus"
       ? html`<${BusView} bus=${bus} send=${send} />`
-      : html`<${GsdView} io=${io} send=${send} />`;
+      : html`<${GsdView} io=${io} bus=${bus} send=${send} />`;
   return html`
     <div class="panel">
       <nav class="tabs">
