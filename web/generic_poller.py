@@ -13,9 +13,7 @@ from web.snapshot import IoSnapshot, idle_io_snapshot
 class ParamSpec:
     gsd: str
     address: int
-    modules: Tuple[str, ...]
-    input_size: int
-    output_size: int
+    modules: Tuple[str, ...]   # tamanhos de I/O são derivados do GSD, não informados
 
 
 @runtime_checkable

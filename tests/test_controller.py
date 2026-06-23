@@ -194,8 +194,9 @@ def test_initial_offset_passed_to_first_engine():
 
 
 def _io(in_hex=""):
+    # output_size=2 (write derivado): valida o tamanho aceito em set_output.
     return IoSnapshot(active=True, address=9, connected=True, diag="OK",
-                      in_hex=in_hex, out_hex="", input_size=2, output_size=0,
+                      in_hex=in_hex, out_hex="", input_size=4, output_size=2,
                       rate_hz=0.0, ts=0.0)
 
 
@@ -236,8 +237,7 @@ def make_ctrl_generic():
 
 
 def _spec():
-    return {"gsd": "ifm.gsd", "address": 9, "modules": ["Class 2 Multiturn"],
-            "input_size": 2, "output_size": 2}
+    return {"gsd": "ifm.gsd", "address": 9, "modules": ["Class 2 Multiturn"]}
 
 
 def test_param_read_enters_generic():
@@ -298,7 +298,7 @@ def test_scan_during_generic_tears_down_generic():
 
 
 def test_set_output_wrong_size_rejected():
-    ctrl, made = make_ctrl_generic()               # _spec output_size=2
+    ctrl, made = make_ctrl_generic()               # write derivado=2 (fake snapshot)
     ctrl.param_read(_spec())
     ctrl.step()
     g = made["generic"][-1][1]

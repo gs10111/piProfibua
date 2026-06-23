@@ -246,9 +246,7 @@ class BusController:
         try:
             spec = ParamSpec(gsd=str(spec_dict["gsd"]),
                              address=int(spec_dict["address"]),
-                             modules=tuple(spec_dict.get("modules", [])),
-                             input_size=int(spec_dict["input_size"]),
-                             output_size=int(spec_dict["output_size"]))
+                             modules=tuple(spec_dict.get("modules", [])))
         except (KeyError, TypeError, ValueError) as e:
             self._diag = "parâmetros inválidos: %s" % e
             return
@@ -277,9 +275,10 @@ class BusController:
         except (ValueError, TypeError):
             self._io_error = "saída hex inválida"
             return
-        if self._param is not None and len(raw) != self._param.output_size:
+        expected = self._generic.snapshot().output_size   # write derivado do GSD
+        if len(raw) != expected:
             # tamanho errado faria o poll() lançar DpError a cada ciclo — rejeita antes.
-            self._io_error = "saída deve ter %d byte(s)" % self._param.output_size
+            self._io_error = "saída deve ter %d byte(s)" % expected
             return
         self._io_error = None
         self._generic.set_output(raw)

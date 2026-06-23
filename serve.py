@@ -74,9 +74,9 @@ def build_controller(conf_path, encoder_path, sim=False, bus_json=None,
     def make_generic(s, spec):
         data = gsd_store.read(spec.gsd)   # FileNotFoundError/GsdInfoError -> idle no controller
         src = GenericDpMaster(conf_path, data, spec.address, list(spec.modules),
-                              spec.input_size, spec.output_size,
                               baud=s.baud, master_addr=s.master_addr, sim=sim)
-        return GenericPoller(src, spec.address, spec.input_size, spec.output_size)
+        # tamanhos derivados do GSD (mestre lê=input_size, escreve=output_size)
+        return GenericPoller(src, spec.address, src.input_size, src.output_size)
 
     return BusController(make_exchange, make_probe, settings,
                          initial_offset=cfg.offset, addresses=addresses,
