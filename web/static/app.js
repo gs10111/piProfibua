@@ -8,7 +8,8 @@ const BAUDS = [9600, 19200, 45450, 93750, 187500, 500000, 1500000];
 const RELIABLE = [9600, 19200];
 
 // Decodifica os bytes crus do encoder (big-endian PROFIBUS) em volta + ângulo.
-// stepsPerTurn = resolução singleturn (RM3007 = 8192). 4 bytes => multivolta.
+// stepsPerTurn = resolução singleturn configurada no Set_Prm (auto, vide
+// stepsPerRevFromPrm). 4 bytes => multivolta.
 function decodePosition(hex, stepsPerTurn) {
   if (!hex || hex.length < 2) return null;
   const spt = stepsPerTurn > 0 ? stepsPerTurn : 8192;
@@ -21,6 +22,18 @@ function decodePosition(hex, stepsPerTurn) {
     angle: (single / spt) * 360,
     multiturn: hex.length / 2 >= 4,
   };
+}
+
+// Lê "steps per revolution" do User_Prm_Data (perfil de encoder PROFIBUS: 4 bytes
+// big-endian no offset 2, após 2 bytes de flags). Assim o display usa a resolução
+// REALMENTE configurada no Set_Prm em vez de um palpite fixo (RM3007 Class 2 = 4096).
+// Devolve null se não houver bytes suficientes ou o valor for implausível (offset
+// errado em outro GSD); aí o campo "passos/volta" continua editável como rede.
+function stepsPerRevFromPrm(hex) {
+  if (!hex || hex.length < 12) return null;
+  const v = parseInt(hex.slice(4, 12), 16);   // bytes 2..5
+  if (!Number.isFinite(v) || v < 1 || v > (1 << 20)) return null;
+  return v;
 }
 
 function useBusSocket() {
@@ -135,10 +148,15 @@ function GsdView({ io, bus, send }) {
   const [err, setErr] = useState("");
   const [addr, setAddr] = useState(3);
   const [outHex, setOutHex] = useState("");
-  const [spt, setSpt] = useState(8192);   // passos/volta (RM3007 = 8192)
+  const [spt, setSpt] = useState(8192);   // passos/volta; auto-ajustado pelo Set_Prm (effect abaixo)
   const refresh = () => fetch("/api/gsd").then((r) => r.json())
     .then((d) => setList(d.gsds || [])).catch(() => {});
   useEffect(() => { refresh(); }, []);
+  // o display herda a resolução configurada (steps/rev do Set_Prm); RM3007 Class 2 = 4096
+  useEffect(() => {
+    const s = preview && stepsPerRevFromPrm(preview.user_prm_hex);
+    if (s) setSpt(s);
+  }, [preview]);
   const open = (name) => fetch(`/api/gsd/${name}`).then((r) => r.json())
     .then((d) => { setSel(d); setChosen([]); setPreview(null); });
   const runPreview = (mods) => fetch(`/api/gsd/${sel.filename}/preview`,
